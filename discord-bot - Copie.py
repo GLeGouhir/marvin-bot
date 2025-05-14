@@ -6,9 +6,6 @@ from dotenv import load_dotenv
 import os
 import sys
 import importlib
-import random
-from discord.errors import Forbidden
-import re
 
 # Chargement des variables d'environnement
 load_dotenv()
@@ -29,48 +26,6 @@ active_channel_id = None
 
 # Dictionnaire des commandes locales
 local_commands = {}
-
-# Structure pour stocker les parties de roulette russe actives
-active_rolls = {}
-
-# Messages humoristiques pour la roulette russe
-ROLL_START_MESSAGES = [
-    "🎩 \"Le barillet est chargé, le sujet est posé : « {subject} ». {initiator} provoque {target} en duel... Que le sort décide du vaincu !\"",
-    "🔫 \"Un seul cran dans le barillet, deux cerveaux en surchauffe. {initiator} vs {target} sur le thème « {subject} ». Clic ou boum ?\"",
-    "😈 \"{initiator} vient de tendre le revolver à {target}… sur « {subject} ». Les balles sont verbales. Ou pas.\"",
-    "🐒 \"Deux primates, une balle, six chambres, et un sujet : « {subject} ». Bonne chance, {initiator} et {target}. Enfin… surtout à l'un de vous.\"",
-    "🤠 \"{initiator} fixe {target} et murmure : « Parlons de « {subject} »… si tu l'oses. » Le barillet tourne.\"",
-    "🎭 \"La scène est prête, les acteurs aussi. Sujet : « {subject} ». Qui rira le dernier ?\"",
-    "🕳️ \"Un trou, un clic, un silence gênant. {initiator} et {target} entrent dans le cercle. Roulette russe sur « {subject} » enclenchée.\""
-]
-
-ROLL_CLICK_MESSAGES = [
-    "Clic... ça passe pour cette fois.",
-    "Le barillet tourne, mais la chambre est vide.",
-    "Le destin t'épargne... temporairement.",
-    "💨 L'air s'échappe du canon. Une chance de plus.",
-    "Clic. La sueur perle sur ton front.",
-    "La mort te fait un clin d'œil... mais pas aujourd'hui.",
-    "Le métal froid du canon ne fait même plus frémir {user}."
-]
-
-ROLL_BANG_MESSAGES = [
-    "💥 BANG! Et voilà, {loser} vient de s'exploser la cervelle sur « {subject} ».",
-    "🔫 BOOM! {loser} a perdu. La roulette russe ne pardonne pas.",
-    "💀 La partie est terminée. {loser} rejoint les perdants de l'histoire.",
-    "🤯 Le coup est parti! {loser} n'est plus des nôtres... intellectuellement parlant.",
-    "⚰️ On applaudit {loser} qui vient de perdre avec panache!"
-]
-
-ROLL_ESCAPE_MESSAGES = [
-    "🧠 On a dit un duel. Pas un monologue.",
-    "🚪 Tu ne peux pas sortir de la pièce tant que le coup n'est pas parti.",
-    "🏃 La roulette ne tolère pas les lâches.",
-    "🔇 Tu peux parler, mais personne n'écoute tant que tu ne vises pas ton adversaire.",
-    "💬 Pas d'échappatoire. Mentionne ton adversaire ou tais-toi.",
-    "⛓️ Chaque mot t'éloigne du salut… sauf si tu vises l'autre.",
-    "🤫 Pas de diversion, pas d'échappatoire. C'est un duel, pas un débat."
-]
 
 def register_local_command(name, func, description=""):
     """Enregistre une commande locale"""
@@ -146,7 +101,6 @@ def register_local_commands():
         print(f"- Salon actif: {channel.name if channel else 'Aucun'}")
         print(f"- Latence: {round(bot.latency * 1000)}ms")
         print(f"- Serveurs connectés: {len(bot.guilds)}")
-        print(f"- Parties de roulette active: {len(active_rolls)}")
         return True
     
     async def cmd_help():
@@ -159,14 +113,6 @@ def register_local_commands():
         print("\nCommandes Discord simplifiées (préfixe !!):")
         print("  !!ping - Fait répondre le bot 'Bite!'")
         print("  !!send <channel_id> <message> - Envoie un message dans un salon spécifique")
-        
-        print("\nCommandes Discord du bot:")
-        print("  !ping - Test de connexion")
-        print("  !echo <message> - Répète le message")
-        print("  !channels - Liste les salons configurés")
-        print("  !pseudo @utilisateur <nouveau_pseudo> - Change le pseudo d'un utilisateur")
-        print("  !russian_roll @utilisateur \"sujet\" - Lance une partie de roulette russe")
-        print("  !cancel_roll - Annule une partie de roulette russe en cours")
         
         print("\nNote: Tout texte sans préfixe est ignoré. Utilisez /send pour envoyer des messages.")
         return True
@@ -290,7 +236,7 @@ async def select_channel():
     # On ne force plus la sélection, on laisse l'utilisateur utiliser les commandes
     return True
 
-# Commandes Discord normales
+# Commandes Discord normales (restent inchangées)
 @bot.command()
 async def ping(ctx):
     """Commande de test pour vérifier que le bot fonctionne"""
@@ -358,198 +304,12 @@ async def pseudo(ctx, member: discord.Member, *, new_nickname):
     except discord.HTTPException as e:
         await ctx.send(f"Une erreur s'est produite: {str(e)}")
 
-@bot.command()
-async def russian_roll(ctx, target: discord.Member = None, *, subject: str = None):
-    """
-    Démarre une partie de roulette russe avec un autre membre.
-    Usage: !russian_roll @utilisateur "sujet"
-    """
-    # Vérification des arguments
-    if not target:
-        await ctx.send("❌ Veuillez mentionner un utilisateur pour lancer une partie de roulette russe.")
-        return
-    
-    if target.id == ctx.author.id:
-        await ctx.send("❌ Vous ne pouvez pas jouer contre vous-même. Trouvez une autre victime.")
-        return
-    
-    if target.bot:
-        await ctx.send("❌ Les bots n'ont pas de cerveau à faire exploser. Choisissez un humain.")
-        return
-    
-    if not subject:
-        await ctx.send("❌ Veuillez spécifier un sujet pour la roulette russe. Usage: !russian_roll @utilisateur \"sujet\"")
-        return
-    
-    # Vérification si l'initiateur a déjà une partie en cours
-    initiator_id = str(ctx.author.id)
-    if initiator_id in active_rolls:
-        await ctx.send(f"❌ Vous avez déjà une partie en cours avec {bot.get_user(int(active_rolls[initiator_id]['target_id'])).mention}. Terminez-la d'abord.")
-        return
-    
-    # Vérification si la cible a déjà une partie en cours comme initiateur
-    target_id = str(target.id)
-    if target_id in active_rolls:
-        await ctx.send(f"❌ {target.mention} a déjà initié une partie. Demandez-lui de terminer sa partie d'abord.")
-        return
-    
-    # Création de la nouvelle partie
-    bullet_position = random.randint(1, 6)  # Position de la balle (1-6)
-    
-    active_rolls[initiator_id] = {
-        "target_id": target_id,
-        "channel_id": str(ctx.channel.id),
-        "subject": subject,
-        "bullet_position": bullet_position,
-        "current_position": 0,  # Le message d'initialisation est la position 0
-        "status": "active"
-    }
-    
-    # Message de départ
-    start_message = random.choice(ROLL_START_MESSAGES).format(
-        initiator=ctx.author.mention,
-        target=target.mention,
-        subject=subject
-    )
-    
-    await ctx.send(start_message)
-    
-    # Debug (à retirer en production)
-    print(f"[DEBUG] Nouvelle partie: {initiator_id} vs {target_id}, balle en position {bullet_position}")
-
-@bot.command()
-async def cancel_roll(ctx):
-    """Annule une partie de roulette russe en cours"""
-    author_id = str(ctx.author.id)
-    
-    # Vérifie si l'auteur est initiateur d'une partie
-    if author_id in active_rolls:
-        # Récupère les données de la partie
-        game_data = active_rolls[author_id]
-        target = ctx.guild.get_member(int(game_data["target_id"]))
-        
-        # Annonce l'annulation
-        await ctx.send(f"🚫 {ctx.author.mention} a mis fin à sa partie de roulette russe avec {target.mention}. Lâche!")
-        
-        # Supprime la partie
-        del active_rolls[author_id]
-    else:
-        # Vérifie si l'auteur est cible d'une partie
-        for initiator_id, game in active_rolls.items():
-            if game["target_id"] == author_id:
-                initiator = ctx.guild.get_member(int(initiator_id))
-                
-                # Annonce l'annulation
-                await ctx.send(f"🚫 {ctx.author.mention} a refusé de continuer la partie de roulette russe avec {initiator.mention}. Lâche!")
-                
-                # Supprime la partie
-                del active_rolls[initiator_id]
-                return
-        
-        # Si l'auteur n'est pas dans une partie
-        await ctx.send("❌ Vous n'avez pas de partie de roulette russe en cours.")
-
+# Ajout d'un écouteur pour les messages dans les salons configurés
 @bot.event
 async def on_message(message):
     # Ignore les messages du bot lui-même
-    if message.author.bot:
+    if message.author == bot.user:
         return
-    
-    author_id = str(message.author.id)
-    
-    # Vérifie si l'auteur est dans une partie active de roulette russe (comme initiateur ou cible)
-    is_initiator = author_id in active_rolls
-    is_target = False
-    
-    initiator_id = None
-    if not is_initiator:
-        # Vérifie si l'auteur est une cible
-        for init_id, game in active_rolls.items():
-            if game["target_id"] == author_id:
-                is_target = True
-                initiator_id = init_id
-                break
-    
-    # Si l'auteur est dans une partie de roulette russe
-    if is_initiator or is_target:
-        game_data = active_rolls[author_id] if is_initiator else active_rolls[initiator_id]
-        
-        # Récupère les IDs des joueurs
-        game_initiator_id = author_id if is_initiator else initiator_id
-        game_target_id = game_data["target_id"] if is_initiator else author_id
-        
-        # Convertit en objets discord.Member
-        initiator = message.guild.get_member(int(game_initiator_id))
-        target = message.guild.get_member(int(game_target_id))
-        
-        # Vérifie si le message est dans le bon salon
-        if str(message.channel.id) != game_data["channel_id"]:
-            return
-        
-        # Vérifie si le message mentionne l'autre joueur
-        other_player_id = game_target_id if is_initiator else game_initiator_id
-        other_player = message.guild.get_member(int(other_player_id))
-        
-        mentions_other_player = False
-        for mentioned in message.mentions:
-            if mentioned.id == int(other_player_id):
-                mentions_other_player = True
-                break
-        
-        if not mentions_other_player:
-            # Supprime le message
-            try:
-                await message.delete()
-                
-                # Envoie un message privé de tentative d'évasion
-                escape_message = random.choice(ROLL_ESCAPE_MESSAGES)
-                try:
-                    await message.author.send(escape_message)
-                except Forbidden:
-                    # Si les DMs sont désactivés, on envoie un message éphémère dans le salon
-                    await message.channel.send(
-                        f"{message.author.mention}: {escape_message}", 
-                        delete_after=5
-                    )
-            except Exception as e:
-                print(f"[ERROR] Impossible de supprimer le message: {e}")
-            
-            return
-        
-        # Message valide avec mention, on fait avancer le jeu
-        game_data["current_position"] += 1
-        current_position = game_data["current_position"]
-        bullet_position = game_data["bullet_position"]
-        
-        # Vérifie si la balle est tirée
-        if current_position == bullet_position:
-            # BANG! Le joueur actuel perd
-            bang_message = random.choice(ROLL_BANG_MESSAGES).format(
-                loser=message.author.mention,
-                subject=game_data["subject"]
-            )
-            
-            await message.channel.send(bang_message)
-            
-            # Fin de partie
-            if is_initiator:
-                del active_rolls[author_id]
-            else:
-                del active_rolls[initiator_id]
-                
-            print(f"[DEBUG] Partie terminée: {initiator.display_name} vs {target.display_name}, {message.author.display_name} a perdu")
-        else:
-            # Clic! Message de survie
-            click_message = random.choice(ROLL_CLICK_MESSAGES).replace("{user}", message.author.mention)
-            await message.channel.send(click_message)
-            
-            # Met à jour la position dans le dictionnaire
-            if is_initiator:
-                active_rolls[author_id]["current_position"] = current_position
-            else:
-                active_rolls[initiator_id]["current_position"] = current_position
-                
-            print(f"[DEBUG] Tour {current_position}/6, balle en position {bullet_position}")
     
     # Vérifie si le bot est mentionné dans le message
     if bot.user.mentioned_in(message):
@@ -564,7 +324,6 @@ async def on_message(message):
     
     # Continue le traitement normal des autres messages
     await bot.process_commands(message)
-
 # Lancement du bot
 if __name__ == "__main__":
     bot.run(TOKEN)
