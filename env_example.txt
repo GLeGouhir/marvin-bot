@@ -1,0 +1,8 @@
+# Exemple de fichier .env à compléter
+# Remplacez les valeurs par vos propres informations
+
+# Votre token Discord Bot
+DISCORD_TOKEN=votre_token_ici
+
+# IDs des salons séparés par des virgules
+CHANNEL_IDS=123456789012345678,234567890123456789
